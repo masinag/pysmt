@@ -242,3 +242,9 @@ class IdentityDagWalker(DagWalker):
 
     def walk_div(self, formula, args, **kwargs):
         return self.mgr.Div(args[0], args[1])
+
+    def walk_exp(self, formula, args, **kwargs):
+        return self.mgr.Exp(args[0])
+
+    def walk_sin(self, formula, args, **kwargs):
+        return self.mgr.Sin(args[0])

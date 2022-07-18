@@ -203,6 +203,13 @@ def Div(left, right):
     r""".. math:: \frac{l}{r}"""
     return get_env().formula_manager.Div(left, right)
 
+def Exp(formula):
+    r""".. math:: \exp{formula}"""
+    return get_env().formula_manager.Exp(formula)
+
+def Sin(formula):
+    r""".. math:: \exp{formula}"""
+    return get_env().formula_manager.Sin(formula)
 
 def Equals(left, right):
     r""".. math:: l = r"""

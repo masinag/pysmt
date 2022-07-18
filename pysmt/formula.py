@@ -273,6 +273,16 @@ class FormulaManager(object):
         return self.create_node(node_type=op.DIV,
                                 args=(left, right))
 
+    def Exp(self, formula):
+        """ Creates an expression of the form: exp(formula) """
+        return self.create_node(node_type=op.EXP,
+                                args=(formula,))
+
+    def Sin(self, formula):
+        """ Creates an expression of the form: sin(formula) """
+        return self.create_node(node_type=op.SIN,
+                                args=(formula,))
+
     def Equals(self, left, right):
         """ Creates an expression of the form: left = right
 
