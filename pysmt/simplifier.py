@@ -1044,7 +1044,7 @@ class Simplifier(pysmt.walkers.DagWalker):
 
         return self.manager.Div(sl, sr)
 
-    @handles(op.EXP, op.SIN)
+    @handles(op.EXP, op.SIN, op.PI)
     @handles(op.SYMBOL)
     @handles(op.REAL_CONSTANT, op.INT_CONSTANT, op.BOOL_CONSTANT)
     @handles(op.BV_CONSTANT, op.STR_CONSTANT, op.ALGEBRAIC_CONSTANT)

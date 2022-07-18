@@ -283,6 +283,11 @@ class FormulaManager(object):
         return self.create_node(node_type=op.SIN,
                                 args=(formula,))
 
+    def PI(self):
+        """Return the transcendental constant PI """
+        return self.create_node(node_type=op.PI,
+                                args=tuple())
+
     def Equals(self, left, right):
         """ Creates an expression of the form: left = right
 

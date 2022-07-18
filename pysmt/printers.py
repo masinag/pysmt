@@ -300,6 +300,9 @@ class HRPrinter(TreeWalker):
         yield formula.arg(0)
         self.write(")")
 
+    def walk_pi(self, formula):
+        self.write("PI")
+
     def walk_and(self, formula): return self.walk_nary(formula, " & ")
     def walk_or(self, formula): return self.walk_nary(formula, " | ")
     def walk_plus(self, formula): return self.walk_nary(formula, " + ")

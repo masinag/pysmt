@@ -211,6 +211,10 @@ def Sin(formula):
     r""".. math:: \exp{formula}"""
     return get_env().formula_manager.Sin(formula)
 
+def PI():
+    r""".. math:: \pi"""
+    return get_env().formula_manager.PI()
+
 def Equals(left, right):
     r""".. math:: l = r"""
     return get_env().formula_manager.Equals(left, right)

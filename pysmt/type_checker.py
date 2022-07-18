@@ -217,7 +217,7 @@ class SimpleTypeChecker(walkers.DagWalker):
         assert len(args) == 0
         return BOOL
 
-    @walkers.handles(op.REAL_CONSTANT, op.ALGEBRAIC_CONSTANT)
+    @walkers.handles(op.REAL_CONSTANT, op.ALGEBRAIC_CONSTANT, op.PI)
     def walk_identity_real(self, formula, args, **kwargs):
         #pylint: disable=unused-argument
         assert formula is not None

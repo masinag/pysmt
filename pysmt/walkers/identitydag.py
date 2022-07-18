@@ -248,3 +248,6 @@ class IdentityDagWalker(DagWalker):
 
     def walk_sin(self, formula, args, **kwargs):
         return self.mgr.Sin(args[0])
+
+    def walk_pi(self, formula, args, **kwargs):
+        return self.mgr.PI()
