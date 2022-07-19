@@ -38,7 +38,7 @@ from pysmt.exceptions import (SolverReturnedUnknownResultError,
                               SolverNotConfiguredForUnsatCoresError,
                               SolverStatusError,
                               InternalSolverError,
-                              NonLinearError, PysmtValueError, PysmtTypeError,
+                              PysmtValueError, PysmtTypeError,
                               ConvertExpressionError)
 from pysmt.decorators import clear_pending_pop, catch_conversion_error
 from pysmt.solvers.qelim import QuantifierEliminator
@@ -174,7 +174,7 @@ class MathSAT5Solver(IncrementalTrackingSolver, UnsatCoreSolver,
 
     LOGICS = PYSMT_QF_LOGICS -\
              set(l for l in PYSMT_QF_LOGICS \
-                 if not l.theory.linear or l.theory.strings)
+                 if l.theory.strings)
 
     OptionsClass = MathSATOptions
 
@@ -401,6 +401,11 @@ class MSatConverter(Converter, DagWalker):
             mathsat.MSAT_TAG_LEQ: self._back_adapter(self.mgr.LE),
             mathsat.MSAT_TAG_PLUS: self._back_adapter(self.mgr.Plus),
             mathsat.MSAT_TAG_TIMES: self._back_adapter(self.mgr.Times),
+            mathsat.MSAT_TAG_DIVIDE: self._back_adapter(self.mgr.Div),
+            mathsat.MSAT_TAG_POW: self._back_adapter(self.mgr.Pow),
+            mathsat.MSAT_TAG_EXP: self._back_adapter(self.mgr.Exp),
+            mathsat.MSAT_TAG_SIN: self._back_adapter(self.mgr.Sin),
+            mathsat.MSAT_TAG_PI: self._back_adapter(self.mgr.PI),
             mathsat.MSAT_TAG_BV_MUL: self._back_adapter(self.mgr.BVMul),
             mathsat.MSAT_TAG_BV_ADD: self._back_adapter(self.mgr.BVAdd),
             mathsat.MSAT_TAG_BV_UDIV: self._back_adapter(self.mgr.BVUDiv),
@@ -456,6 +461,11 @@ class MSatConverter(Converter, DagWalker):
             mathsat.MSAT_TAG_LEQ: self._sig_most_generic_bool_binary,
             mathsat.MSAT_TAG_PLUS:  self._sig_most_generic_bool_binary,
             mathsat.MSAT_TAG_TIMES: self._sig_most_generic_bool_binary,
+            mathsat.MSAT_TAG_DIVIDE: self._sig_most_generic_bool_binary,
+            mathsat.MSAT_TAG_POW: self._sig_most_generic_bool_binary,
+            mathsat.MSAT_TAG_EXP: self._sig_unary,
+            mathsat.MSAT_TAG_SIN: self._sig_unary,
+            mathsat.MSAT_TAG_PI: self._sig_unknown,
             mathsat.MSAT_TAG_BV_MUL: self._sig_binary,
             mathsat.MSAT_TAG_BV_ADD: self._sig_binary,
             mathsat.MSAT_TAG_BV_UDIV:self._sig_binary,
@@ -974,15 +984,39 @@ class MSatConverter(Converter, DagWalker):
 
     def walk_times(self, formula, args, **kwargs):
         res = args[0]
-        nl_count = 0 if mathsat.msat_term_is_number(self.msat_env(), res) else 1
         for x in args[1:]:
-            if not mathsat.msat_term_is_number(self.msat_env(), x):
-                nl_count += 1
-            if nl_count >= 2:
-                raise NonLinearError(formula)
-            else:
-                res = mathsat.msat_make_times(self.msat_env(), res, x)
+            res = mathsat.msat_make_times(self.msat_env(), res, x)
         return res
+
+    def walk_div(self, formula, args, **kwargs):
+        x, n = args
+        if self._get_type(formula.args()[0]).is_int_type() and self._get_type(formula.args()[1]).is_int_type():
+            zero = mathsat.msat_make_number(self.msat_env(), "0")
+            neg = mathsat.msat_make_number(self.msat_env(), "-1")
+            d = mathsat.msat_make_divide(self.msat_env(), x, n)
+            # floor(x / n)
+            fd = mathsat.msat_make_floor(self.msat_env(), d)
+            # -floor(-x/n)
+            nd = mathsat.msat_make_divide(self.msat_env(), x, mathsat.msat_make_times(self.msat_env(), neg, n))
+            fnd = mathsat.msat_make_floor(self.msat_env(), nd)
+            nfnd = mathsat.msat_make_times(self.msat_env(), neg, fnd)
+            # n <= 0 ? floor(x/n) : -floor(-x/n)
+            cond = mathsat.msat_make_leq(self.msat_env(), zero, n)
+            return mathsat.msat_make_term_ite(self.msat_env(), cond, fd, nfnd)
+        else:
+            return mathsat.msat_make_divide(self.msat_env(), args[0], args[1])
+
+    def walk_pow(self, formula, args, **kwargs):
+        return mathsat.msat_make_pow(self.msat_env(), args[0], args[1])
+
+    def walk_exp(self, formula, args, **kwargs):
+        return mathsat.msat_make_exp(self.msat_env(), args[0])
+
+    def walk_sin(self, formula, args, **kwargs):
+        return mathsat.msat_make_sin(self.msat_env(), args[0])
+
+    def walk_pi(self, formula, args, **kwargs):
+        return mathsat.msat_make_pi(self.msat_env())
 
     def walk_function(self, formula, args, **kwargs):
         name = formula.function_name()

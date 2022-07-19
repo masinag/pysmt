@@ -136,8 +136,7 @@ class Z3Options(SolverOptions):
 
 class Z3Solver(IncrementalTrackingSolver, UnsatCoreSolver,
                SmtLibBasicSolver, SmtLibIgnoreMixin):
-
-    LOGICS = PYSMT_LOGICS - set(x for x in PYSMT_LOGICS if x.theory.strings)
+    LOGICS = PYSMT_LOGICS - set(x for x in PYSMT_LOGICS if x.theory.strings or x.theory.transcendental)
     OptionsClass = Z3Options
 
     SOLVERFOR_LOGIC_NAMES=['AUFLIA', 'ALIA', 'AUFLIRA', 'AUFNIRA', 'LRA', 'LIA', 'NIA',

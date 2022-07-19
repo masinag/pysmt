@@ -30,7 +30,7 @@ from pysmt.logics import PYSMT_LOGICS, ARRAYS_CONST_LOGICS
 from pysmt.solvers.solver import Solver, Converter, SolverOptions
 from pysmt.exceptions import (SolverReturnedUnknownResultError,
                               InternalSolverError,
-                              NonLinearError, PysmtValueError,
+                              PysmtValueError,
                               PysmtTypeError)
 from pysmt.walkers import DagWalker
 from pysmt.solvers.smtlib import SmtLibBasicSolver, SmtLibIgnoreMixin
@@ -77,8 +77,7 @@ class CVC4Options(SolverOptions):
 class CVC4Solver(Solver, SmtLibBasicSolver, SmtLibIgnoreMixin):
 
     LOGICS = PYSMT_LOGICS -\
-             ARRAYS_CONST_LOGICS -\
-             set(l for l in PYSMT_LOGICS if not l.theory.linear)
+             ARRAYS_CONST_LOGICS
 
     OptionsClass = CVC4Options
 
@@ -344,12 +343,28 @@ class CVC4Converter(Converter, DagWalker):
         return self.mkExpr(CVC4.EQUAL, args[0], args[1])
 
     def walk_times(self, formula, args, **kwargs):
-        if sum(1 for x in formula.args() if x.get_free_variables()) > 1:
-            raise NonLinearError(formula)
         res = args[0]
         for x in args[1:]:
             res = self.mkExpr(CVC4.MULT, res, x)
         return res
+
+    def walk_div(self, formula, args, **kwargs):
+        if self._get_type(formula.args()[0]).is_int_type() and self._get_type(formula.args()[1]).is_int_type():
+            return self.mkExpr(CVC4.INTS_DIVISION, args[0], args[1])
+        else:
+            return self.mkExpr(CVC4.DIVISION, args[0], args[1])
+
+    def walk_pow(self, formula, args, **kwargs):
+        return self.mkExpr(CVC4.POW, args[0], args[1])
+
+    def walk_exp(self, formula, args, **kwargs):
+        return self.mkExpr(CVC4.EXPONENTIAL, args[0])
+
+    def walk_sin(self, formula, args, **kwargs):
+        return self.mkExpr(CVC4.SINE, args[0])
+
+    def walk_pi(self, formula, args, **kwargs):
+        return self.cvc4_exprMgr.mkNullaryOperator(self.realType, CVC4.PI)
 
     def walk_toreal(self, formula, args, **kwargs):
         return self.mkExpr(CVC4.TO_REAL, args[0])
