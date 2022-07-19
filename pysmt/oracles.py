@@ -282,6 +282,14 @@ class TheoryOracle(walkers.DagWalker):
         assert not theory_out.integer_difference
         return theory_out
 
+    @walkers.handles([op.EXP, op.SIN, op.PI])
+    def walk_transcendental(selfself, formula, args, **kwargs):
+        theory_out = Theory(transcendental=True)
+        for t in args:
+            theory_out = theory_out.combine(t)
+        return theory_out
+
+
     def walk_strings(self, formula, args, **kwargs):
         """Extends the Theory with Strings."""
         #pylint: disable=unused-argument
