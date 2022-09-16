@@ -96,7 +96,7 @@ class HRPrinter(TreeWalker):
         if formula.constant_value().denominator == 1:
             self.write("%s.0" % n)
         else:
-            self.write("%s/%s" % (n, d))
+            self.write("(%s/%s)" % (n, d))
 
     def walk_int_constant(self, formula):
         assert is_pysmt_integer(formula.constant_value()), \
