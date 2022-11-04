@@ -18,6 +18,7 @@
 """
 This module defines some rewritings for pySMT formulae.
 """
+import itertools
 from itertools import combinations
 
 from pysmt.walkers import DagWalker, IdentityDagWalker, handles
@@ -25,8 +26,7 @@ import pysmt.typing as types
 import pysmt.operators as op
 
 
-class CNFizer(DagWalker):
-
+class GenericCNFizer(DagWalker):
     THEORY_PLACEHOLDER = "__Placeholder__"
 
     TRUE_CNF = frozenset()
@@ -98,8 +98,8 @@ class CNFizer(DagWalker):
             return args[0]
 
         k = self._key_var(formula)
-        _cnf = [frozenset([k] + [self.mgr.Not(a).simplify() for a,_ in args])]
-        for a,c in args:
+        _cnf = [frozenset([k] + [self.mgr.Not(a).simplify() for a, _ in args])]
+        for a, c in args:
             _cnf.append(frozenset([a, self.mgr.Not(k)]))
             for clause in c:
                 _cnf.append(clause)
@@ -109,8 +109,8 @@ class CNFizer(DagWalker):
         if len(args) == 1:
             return args[0]
         k = self._key_var(formula)
-        _cnf = [frozenset([self.mgr.Not(k)] + [a for a,_ in args])]
-        for a,c in args:
+        _cnf = [frozenset([self.mgr.Not(k)] + [a for a, _ in args])]
+        for a, c in args:
             _cnf.append(frozenset([k, self.mgr.Not(a)]))
             for clause in c:
                 _cnf.append(clause)
@@ -125,8 +125,8 @@ class CNFizer(DagWalker):
         else:
             k = self._key_var(formula)
             return k, _cnf | frozenset([frozenset([self.mgr.Not(k),
-                                                  self.mgr.Not(a).simplify()]),
-                                       frozenset([k, a])])
+                                                   self.mgr.Not(a).simplify()]),
+                                        frozenset([k, a])])
 
     def walk_implies(self, formula,  args, **kwargs):
         a, cnf_a = args[0]
@@ -155,6 +155,16 @@ class CNFizer(DagWalker):
                                               frozenset([a, not_b, not_k]),
                                               frozenset([a, b, k])]))
 
+    @handles(op.CONSTANTS)
+    def walk_constant(self, formula, **kwargs):
+        # pylint: disable=unused-argument
+        if formula.is_true():
+            return formula, CNFizer.TRUE_CNF
+        elif formula.is_false():
+            return formula, CNFizer.TRUE_CNF
+        else:
+            return CNFizer.THEORY_PLACEHOLDER
+
     def walk_symbol(self, formula, **kwargs):
         if formula.is_symbol(types.BOOL):
             return formula, CNFizer.TRUE_CNF
@@ -172,7 +182,7 @@ class CNFizer(DagWalker):
         if any(a == CNFizer.THEORY_PLACEHOLDER for a in args):
             return CNFizer.THEORY_PLACEHOLDER
         else:
-            (i,cnf_i),(t,cnf_t),(e,cnf_e) = args
+            (i, cnf_i), (t, cnf_t), (e, cnf_e) = args
             k = self._key_var(formula)
             not_i = self.mgr.Not(i).simplify()
             not_t = self.mgr.Not(t).simplify()
@@ -185,28 +195,85 @@ class CNFizer(DagWalker):
                                   frozenset([i, not_e, k]),
                                   frozenset([i, e, not_k])]))
 
-    @handles(op.THEORY_OPERATORS)
-    def walk_theory_op(self, formula, **kwargs):
-        #pylint: disable=unused-argument
-        return CNFizer.THEORY_PLACEHOLDER
+    @handles(op.RELATIONS)
+    def walk_theory_relation(self, formula, args, **kwargs):
+        # pylint: disable=unused-argument
+        assert all(a == CNFizer.THEORY_PLACEHOLDER for a in args)
+        return formula, CNFizer.TRUE_CNF
+
+
+# EOC CNFizer
+
+class DeMorganCNFizer(GenericCNFizer):
+    def __init__(self, environment=None):
+        CNFizer.__init__(self, environment)
+
+    def convert(self, formula):
+        _nnf = nnf(formula)
+        _cnf = self.walk(_nnf)
+        res = []
+        for clause in _cnf:
+            if len(clause) == 0:
+                return CNFizer.FALSE_CNF
+            simp = []
+            for lit in clause:
+                if lit.is_true():
+                    # Prune clauses that are trivially TRUE
+                    simp = None
+                    break
+                elif not lit.is_false():
+                    # Prune FALSE literals
+                    simp.append(lit)
+            if simp:
+                res.append(frozenset(simp))
+        return frozenset(res)
+
+    def walk_and(self, formula, args, **kwargs):
+        if len(args) == 1:
+            return args[0]
+        # print("AND Converting {} to {}".format(formula, frozenset().union(*args)))
+        return frozenset().union(*args)
+
+    def walk_or(self, formula, args, **kwargs):
+        if len(args) == 1:
+            return args[0]
+
+        # print("OR Converting {} to {}".format(formula, frozenset(itertools.product(*args))))
+        return frozenset(map(lambda x : frozenset().union(*x), itertools.product(*args)))
+
+    def walk_not(self, formula, args, **kwargs):
+        _cnf = args[0]
+        # the formula was converted into NNF, so we can assume that
+        # the argument is a literal
+        assert len(_cnf) == 1 and len(next(iter(_cnf))) == 1
+        # print("NOT Converting {} to {}".format(formula, frozenset([frozenset([self.mgr.Not(next(iter(next(iter(_cnf)))))])])))
+        return frozenset([frozenset([self.mgr.Not(next(iter(next(iter(_cnf)))))])])
 
     @handles(op.CONSTANTS)
     def walk_constant(self, formula, **kwargs):
-        #pylint: disable=unused-argument
-        if formula.is_true():
-            return formula, CNFizer.TRUE_CNF
-        elif formula.is_false():
-            return formula, CNFizer.TRUE_CNF
+        # pylint: disable=unused-argument
+        # print("CONSTANT Converting {} to {}".format(formula, frozenset([frozenset([formula])]) if formula.is_bool_constant() else CNFizer.THEORY_PLACEHOLDER))
+        if formula.is_bool_constant():
+            return frozenset([frozenset([formula])])
+        else:
+            return CNFizer.THEORY_PLACEHOLDER
+
+    def walk_symbol(self, formula, **kwargs):
+        # print("SYMBOL Converting {} to {}".format(formula, frozenset([frozenset([formula])]) if formula.is_symbol(types.BOOL) else CNFizer.THEORY_PLACEHOLDER))
+        if formula.is_symbol(types.BOOL):
+            return frozenset([frozenset([formula])])
         else:
             return CNFizer.THEORY_PLACEHOLDER
 
     @handles(op.RELATIONS)
     def walk_theory_relation(self, formula, args, **kwargs):
-        #pylint: disable=unused-argument
+        # pylint: disable=unused-argument
+        # print("RELATION Converting {} to {}".format(formula, frozenset([frozenset([formula])])))
         assert all(a == CNFizer.THEORY_PLACEHOLDER for a in args)
-        return formula, CNFizer.TRUE_CNF
+        return frozenset([frozenset([formula])])
 
-# EOC CNFizer
+
+# EOC DeMorganCNFizer
 
 
 class NNFizer(DagWalker):
