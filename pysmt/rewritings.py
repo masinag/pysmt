@@ -26,7 +26,6 @@ import pysmt.operators as op
 
 
 class CNFizer(DagWalker):
-
     THEORY_PLACEHOLDER = "__Placeholder__"
 
     TRUE_CNF = frozenset()
@@ -52,7 +51,7 @@ class CNFizer(DagWalker):
 
         Returns a set of clauses: a set of sets of literals.
         """
-        tl, _cnf = self.walk(formula)
+        tl, _cnf, *_ = self.walk(formula)
         if len(_cnf) == 0:
             return [frozenset([tl])]
         res = []
@@ -95,7 +94,7 @@ class CNFizer(DagWalker):
     def serialize(self, _cnf):
         clauses = []
         for clause in _cnf:
-            clauses +=[" { " + " ".join(str(lit) for lit in clause) + "} "]
+            clauses += [" { " + " ".join(str(lit) for lit in clause) + "} "]
         res = ["{"] + clauses + ["}"]
         return "".join(res)
 
@@ -108,8 +107,8 @@ class CNFizer(DagWalker):
             return args[0]
 
         k = self._key_var(formula)
-        _cnf = [frozenset([k] + [self.mgr.Not(a).simplify() for a,_ in args])]
-        for a,c in args:
+        _cnf = [frozenset([k] + [self.mgr.Not(a).simplify() for a, _ in args])]
+        for a, c in args:
             _cnf.append(frozenset([a, self.mgr.Not(k)]))
             for clause in c:
                 _cnf.append(clause)
@@ -119,8 +118,8 @@ class CNFizer(DagWalker):
         if len(args) == 1:
             return args[0]
         k = self._key_var(formula)
-        _cnf = [frozenset([self.mgr.Not(k)] + [a for a,_ in args])]
-        for a,c in args:
+        _cnf = [frozenset([self.mgr.Not(k)] + [a for a, _ in args])]
+        for a, c in args:
             _cnf.append(frozenset([k, self.mgr.Not(a)]))
             for clause in c:
                 _cnf.append(clause)
@@ -135,7 +134,7 @@ class CNFizer(DagWalker):
         else:
             return self.mgr.Not(a).simplify(), _cnf
 
-    def walk_implies(self, formula,  args, **kwargs):
+    def walk_implies(self, formula, args, **kwargs):
         a, cnf_a = args[0]
         b, cnf_b = args[1]
 
@@ -179,7 +178,7 @@ class CNFizer(DagWalker):
         if any(a == CNFizer.THEORY_PLACEHOLDER for a in args):
             return CNFizer.THEORY_PLACEHOLDER
         else:
-            (i,cnf_i),(t,cnf_t),(e,cnf_e) = args
+            (i, cnf_i), (t, cnf_t), (e, cnf_e) = args
             k = self._key_var(formula)
             not_i = self.mgr.Not(i).simplify()
             not_t = self.mgr.Not(t).simplify()
@@ -194,12 +193,12 @@ class CNFizer(DagWalker):
 
     @handles(op.THEORY_OPERATORS)
     def walk_theory_op(self, formula, **kwargs):
-        #pylint: disable=unused-argument
+        # pylint: disable=unused-argument
         return CNFizer.THEORY_PLACEHOLDER
 
     @handles(op.CONSTANTS)
     def walk_constant(self, formula, **kwargs):
-        #pylint: disable=unused-argument
+        # pylint: disable=unused-argument
         if formula.is_true():
             return formula, CNFizer.TRUE_CNF
         elif formula.is_false():
@@ -209,11 +208,150 @@ class CNFizer(DagWalker):
 
     @handles(op.RELATIONS)
     def walk_theory_relation(self, formula, args, **kwargs):
-        #pylint: disable=unused-argument
+        # pylint: disable=unused-argument
         assert all(a == CNFizer.THEORY_PLACEHOLDER for a in args)
         return formula, CNFizer.TRUE_CNF
 
+
 # EOC CNFizer
+
+
+class PolarityCNFizer(CNFizer):
+    """Optimized CNF conversion taking into account the polarity of the subformulas.
+
+    Each walk method returns 3 items:
+    - the key variable for the formula
+    - the labeling definitions if the formula appears with positive polarity
+    - the labeling definitions if the formula appears with negative polarity
+    """
+
+    def walk_and(self, formula, args, **kwargs):
+        if len(args) == 1:
+            return args[0]
+
+        k = self._key_var(formula)
+        cnf_pos = []
+        cnf_neg = []
+        neg_clause = [k]
+        for a, pos, neg in args:
+            cnf_pos.append(frozenset([a, self.mgr.Not(k)]))
+            neg_clause.append(self.mgr.Not(a).simplify())
+            for clause in pos:
+                cnf_pos.append(clause)
+            for clause in neg:
+                cnf_neg.append(clause)
+        cnf_neg.append(frozenset(neg_clause))
+
+        return k, frozenset(cnf_pos), frozenset(cnf_neg)
+
+    def walk_or(self, formula, args, **kwargs):
+        if len(args) == 1:
+            return args[0]
+
+        k = self._key_var(formula)
+        cnf_pos = []
+        cnf_neg = []
+        pos_clause = [self.mgr.Not(k)]
+        for a, pos, neg in args:
+            cnf_neg.append(frozenset([self.mgr.Not(a), k]))
+            pos_clause.append(a)
+            for clause in pos:
+                cnf_pos.append(clause)
+            for clause in neg:
+                cnf_neg.append(clause)
+        cnf_pos.append(frozenset(pos_clause))
+        return k, frozenset(cnf_pos), frozenset(cnf_neg)
+
+    def walk_not(self, formula, args, **kwargs):
+        a, _cnf_pos, _cnf_neg = args[0]
+        if a.is_true():
+            return self.mgr.FALSE(), CNFizer.TRUE_CNF
+        elif a.is_false():
+            return self.mgr.TRUE(), CNFizer.TRUE_CNF
+        else:
+            return self.mgr.Not(a).simplify(), _cnf_neg, _cnf_pos
+
+    def walk_implies(self, formula, args, **kwargs):
+        a, cnf_a_pos, cnf_a_neg = args[0]
+        b, cnf_b_pos, cnf_b_neg = args[1]
+
+        k = self._key_var(formula)
+        not_a = self.mgr.Not(a).simplify()
+        not_b = self.mgr.Not(b).simplify()
+        not_k = self.mgr.Not(k)
+
+        return k, \
+            (cnf_a_neg | cnf_b_pos | frozenset([frozenset([not_a, b, not_k])])), \
+            (cnf_a_pos | cnf_b_neg | frozenset([frozenset([a, k]), frozenset([not_b, k])]))
+
+    def walk_iff(self, formula, args, **kwargs):
+        a, cnf_a_pos, cnf_a_neg = args[0]
+        b, cnf_b_pos, cnf_b_neg = args[1]
+
+        k = self._key_var(formula)
+        not_a = self.mgr.Not(a).simplify()
+        not_b = self.mgr.Not(b).simplify()
+        not_k = self.mgr.Not(k)
+
+        _cnf = (cnf_a_pos | cnf_a_neg | cnf_b_pos | cnf_b_neg | frozenset([frozenset([not_a, not_b, k]),
+                                                                           frozenset([not_a, b, not_k]),
+                                                                           frozenset([a, not_b, not_k]),
+                                                                           frozenset([a, b, k])]))
+        return k, _cnf, _cnf
+
+    def walk_symbol(self, formula, **kwargs):
+        if formula.is_symbol(types.BOOL):
+            return formula, CNFizer.TRUE_CNF, CNFizer.TRUE_CNF
+        else:
+            return CNFizer.THEORY_PLACEHOLDER
+
+    def walk_function(self, formula, **kwargs):
+        ty = formula.function_symbol().symbol_type()
+        if ty.return_type.is_bool_type():
+            return formula, CNFizer.TRUE_CNF, CNFizer.TRUE_CNF
+        else:
+            return CNFizer.THEORY_PLACEHOLDER
+
+    def walk_ite(self, formula, args, **kwargs):
+        if any(a == CNFizer.THEORY_PLACEHOLDER for a in args):
+            return CNFizer.THEORY_PLACEHOLDER
+        else:
+            (i, cnf_i_pos, cnf_i_neg), (t, cnf_t_pos, cnf_t_neg), (e, cnf_e_pos, cnf_e_neg) = args
+            k = self._key_var(formula)
+            not_i = self.mgr.Not(i).simplify()
+            not_t = self.mgr.Not(t).simplify()
+            not_e = self.mgr.Not(e).simplify()
+            not_k = self.mgr.Not(k)
+
+            return k, \
+                (cnf_i_pos | cnf_i_neg | cnf_t_pos | cnf_e_pos |
+                 frozenset([frozenset([not_i, t, not_k]), frozenset([i, e, not_k])])), \
+                (cnf_i_pos | cnf_i_neg | cnf_t_neg | cnf_e_neg |
+                 frozenset([frozenset([not_i, not_t, k]), frozenset([i, not_e, k])]))
+
+    @handles(op.THEORY_OPERATORS)
+    def walk_theory_op(self, formula, **kwargs):
+        # pylint: disable=unused-argument
+        return CNFizer.THEORY_PLACEHOLDER
+
+    @handles(op.CONSTANTS)
+    def walk_constant(self, formula, **kwargs):
+        # pylint: disable=unused-argument
+        if formula.is_true():
+            return formula, CNFizer.TRUE_CNF, CNFizer.TRUE_CNF
+        elif formula.is_false():
+            return formula, CNFizer.TRUE_CNF, CNFizer.TRUE_CNF
+        else:
+            return CNFizer.THEORY_PLACEHOLDER
+
+    @handles(op.RELATIONS)
+    def walk_theory_relation(self, formula, args, **kwargs):
+        # pylint: disable=unused-argument
+        assert all(a == CNFizer.THEORY_PLACEHOLDER for a in args)
+        return formula, CNFizer.TRUE_CNF, CNFizer.TRUE_CNF
+
+
+# EOC PolarityCNFizer
 
 
 class NNFizer(DagWalker):
@@ -292,10 +430,10 @@ class NNFizer(DagWalker):
 
         else:
             assert formula.is_str_op() or \
-                formula.is_symbol() or \
-                formula.is_function_application() or \
-                formula.is_bool_constant() or \
-                formula.is_theory_relation(), str(formula)
+                   formula.is_symbol() or \
+                   formula.is_function_application() or \
+                   formula.is_bool_constant() or \
+                   formula.is_theory_relation(), str(formula)
             return []
 
     def walk_not(self, formula, args, **kwargs):
@@ -313,7 +451,7 @@ class NNFizer(DagWalker):
         elif s.is_iff():
             a, b, na, nb = args
             return self.mgr.Or(self.mgr.And(a, nb),
-                          self.mgr.And(b, na))
+                               self.mgr.And(b, na))
         elif s.is_forall():
             return self.mgr.Exists(s.quantifier_vars(), args[0])
         elif s.is_exists():
@@ -327,7 +465,7 @@ class NNFizer(DagWalker):
     def walk_iff(self, formula, args, **kwargs):
         a, b, na, nb = args
         return self.mgr.And(self.mgr.Or(na, b),
-                       self.mgr.Or(nb, a))
+                            self.mgr.Or(nb, a))
 
     def walk_and(self, formula, args, **kwargs):
         return self.mgr.And(args)
@@ -356,18 +494,19 @@ class NNFizer(DagWalker):
 
     @handles(op.CONSTANTS)
     def walk_constant(self, formula, **kwargs):
-        #pylint: disable=unused-argument
+        # pylint: disable=unused-argument
         return formula
 
     @handles(op.RELATIONS)
     def walk_theory_relation(self, formula, **kwargs):
-        #pylint: disable=unused-argument
+        # pylint: disable=unused-argument
         return formula
 
     @handles(op.THEORY_OPERATORS)
     def walk_theory_op(self, formula, **kwargs):
-        #pylint: disable=unused-argument
+        # pylint: disable=unused-argument
         return None
+
 
 # EOC NNFizer
 
@@ -408,18 +547,18 @@ class PrenexNormalizer(DagWalker):
     def walk_symbol(self, formula, **kwargs):
         if formula.symbol_type().is_bool_type():
             return [], formula
-        return None # Note: When returning None, we do not pack it into a tuple!
+        return None  # Note: When returning None, we do not pack it into a tuple!
 
     @handles(op.CONSTANTS)
     def walk_constant(self, formula, **kwargs):
-        #pylint: disable=unused-argument
+        # pylint: disable=unused-argument
         if formula.is_bool_constant():
-            return [],formula
+            return [], formula
         return None
 
     @handles(op.AND, op.OR)
     def walk_conj_disj(self, formula, args, **kwargs):
-        #pylint: disable=unused-argument
+        # pylint: disable=unused-argument
 
         # Hold the final result
         quantifiers = []
@@ -440,7 +579,7 @@ class PrenexNormalizer(DagWalker):
                 needs_rename = q_vars & reserved
                 if len(needs_rename) > 0:
                     # we need alpha-renaming: prepare the substitution map
-                    sub = dict((v,self.mgr.FreshSymbol(v.symbol_type()))
+                    sub = dict((v, self.mgr.FreshSymbol(v.symbol_type()))
                                for v in needs_rename)
                     sub_matrix = sub_matrix.substitute(sub)
 
@@ -513,12 +652,12 @@ class PrenexNormalizer(DagWalker):
 
     @handles(op.RELATIONS)
     def walk_theory_relation(self, formula, **kwargs):
-        #pylint: disable=unused-argument
+        # pylint: disable=unused-argument
         return [], formula
 
     @handles(op.QUANTIFIERS)
     def walk_quantifier(self, formula, args, **kwargs):
-        #pylint: disable=unused-argument
+        # pylint: disable=unused-argument
         quantifiers, matrix = args[0]
         qvars = set(v for _, qv in quantifiers for v in qv)
         nq = set(formula.quantifier_vars()) - qvars
@@ -535,11 +674,11 @@ class PrenexNormalizer(DagWalker):
 
     @handles(op.THEORY_OPERATORS)
     def walk_theory_op(self, formula, **kwargs):
-        #pylint: disable=unused-argument
+        # pylint: disable=unused-argument
         return None
 
-# EOC PrenexNormalizer
 
+# EOC PrenexNormalizer
 
 
 class AIGer(DagWalker):
@@ -559,13 +698,13 @@ class AIGer(DagWalker):
     @handles(op.SYMBOL, op.FUNCTION)
     def walk_nop(self, formula, args, **kwargs):
         """We return the Theory subformulae without changes."""
-        #pylint: disable=unused-argument
+        # pylint: disable=unused-argument
         return formula
 
     @handles(op.QUANTIFIERS)
     def walk_quantifier(self, formula, args, **kwargs):
         """Recreate the quantifiers, with the rewritten subformula."""
-        #pylint: disable=unused-argument
+        # pylint: disable=unused-argument
         if formula.is_exists():
             return self.mgr.Exists(formula.quantifier_vars(),
                                    args[0])
@@ -589,7 +728,7 @@ class AIGer(DagWalker):
         lhs, rhs = args
         r1 = self.mgr.Not(self.mgr.And(lhs, self.mgr.Not(rhs)))
         r2 = self.mgr.Not(self.mgr.And(rhs, self.mgr.Not(lhs)))
-        return self.mgr.And(r1,r2)
+        return self.mgr.And(r1, r2)
 
     def walk_implies(self, formula, args, **kwargs):
         """ a -> b = !(a & !b) """
@@ -610,6 +749,7 @@ class AIGer(DagWalker):
         else:
             return formula
 
+
 # EOC AIGer
 
 
@@ -621,6 +761,7 @@ class TimesDistributor(IdentityDagWalker):
 
     E.g., (x+1)*3 -> (x*3) + 3
     """
+
     def __init__(self, env=None, invalidate_memoization=None):
         IdentityDagWalker.__init__(self, env=env,
                                    invalidate_memoization=invalidate_memoization)
@@ -678,6 +819,7 @@ class TimesDistributor(IdentityDagWalker):
         new_args.extend(self.Times(minus_one, r) for r in rhs)
         return self.Plus(new_args)
 
+
 # EOC TimesDistributivity
 
 
@@ -690,8 +832,8 @@ class Ackermannizer(IdentityDagWalker):
         # will have "f": set([g(x), y], [x, g(y)])
         self._funs_to_args = {}
 
-        #maps the actual applications to the constants that will be
-        #generated, or to the original term if it is not replaced.
+        # maps the actual applications to the constants that will be
+        # generated, or to the original term if it is not replaced.
         self._terms_dict = {}
 
     def do_ackermannization(self, formula):
@@ -771,7 +913,6 @@ class Ackermannizer(IdentityDagWalker):
         self._funs_to_args[function_name].add(args)
 
 
-
 # EOC Ackermannizer
 
 
@@ -788,9 +929,9 @@ class DisjointSet(object):
     """
 
     def __init__(self, compare_fun=None):
-        self.leader = {} # maps a member to the group's leader
-        self.group = {} # maps a group leader to the group (which is a set)
-        self.comp = compare_fun # a binary comparison function used for ranking
+        self.leader = {}  # maps a member to the group's leader
+        self.group = {}  # maps a group leader to the group (which is a set)
+        self.comp = compare_fun  # a binary comparison function used for ranking
 
     def add(self, a, b):
         """Add the pair (a,b) in the set"""
@@ -799,12 +940,12 @@ class DisjointSet(object):
         if leadera is not None:
             if leaderb is not None:
                 if leadera == leaderb:
-                    return # nothing to do
+                    return  # nothing to do
                 groupa = self.group[leadera]
                 groupb = self.group[leaderb]
                 if self.comp is not None and self.comp(leadera, leaderb) > 0:
-                    a, leadera, groupa, b, leaderb, groupb = b, leaderb, groupb,\
-                                                             a, leadera, groupa
+                    a, leadera, groupa, b, leaderb, groupb = b, leaderb, groupb, \
+                        a, leadera, groupa
                 groupa |= groupb
                 del group[leaderb]
                 for k in groupb:
@@ -826,8 +967,8 @@ class DisjointSet(object):
         """Find the root of k in the set"""
         return self.leader[k]
 
-# EOC DisjointSet
 
+# EOC DisjointSet
 
 
 def nnf(formula, environment=None):
@@ -929,8 +1070,8 @@ def propagate_toplevel(formula, env=None, do_simplify=True, preserve_equivalence
             if l.is_array_value() or r.is_array_value():
                 # skipping constant arrays
                 continue
-            if (l.is_symbol() or l.is_constant()) and\
-               (r.is_symbol() or r.is_constant()):
+            if (l.is_symbol() or l.is_constant()) and \
+                    (r.is_symbol() or r.is_constant()):
                 relevant.add(l)
                 relevant.add(r)
                 disjoint_set.add(l, r)
@@ -941,8 +1082,8 @@ def propagate_toplevel(formula, env=None, do_simplify=True, preserve_equivalence
         v = disjoint_set.find(k)
         if k.node_id() != v.node_id():
             # early detection of a conflict
-            if k.is_constant() and v.is_constant() and\
-               k.constant_value() != v.constant_value():
+            if k.is_constant() and v.is_constant() and \
+                    k.constant_value() != v.constant_value():
                 return mgr.FALSE()
             else:
                 sigma[k] = v
