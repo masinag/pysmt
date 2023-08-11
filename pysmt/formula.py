@@ -795,7 +795,7 @@ class FormulaManager(object):
                                 payload=(left.bv_width(),))
 
     def BVURem(self, left, right):
-        """Returns the reminder of the two BV."""
+        """Returns the remainder of the two BV."""
         return self.create_node(node_type=op.BV_UREM,
                                 args=(left, right),
                                 payload=(left.bv_width(),))
@@ -908,8 +908,7 @@ class FormulaManager(object):
 
     def BVXnor(self, left, right):
         """Returns the XNOR composition of left and right."""
-        return self.BVOr(self.BVAnd(left, self.BVNot(right)),
-                         self.BVAnd(self.BVNot(left), right))
+        return self.BVNot(self.BVXor(left, right))
 
     def BVSGT(self, left, right):
         """Returns the SIGNED GREATER-THAN comparison for BV."""
