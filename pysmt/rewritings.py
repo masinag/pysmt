@@ -254,6 +254,12 @@ class NNFizer(DagWalker):
                 return [mgr.Not(x) for x in s.args()]
             elif s.is_or():
                 return [mgr.Not(x) for x in s.args()]
+            elif s.is_ite():
+                # This must be a boolean ITE as we do not recur within
+                # theory atoms
+                assert self.env.stc.get_type(s).is_bool_type()
+                i, t, e = s.args()
+                return [i, mgr.Not(i), mgr.Not(t), mgr.Not(e)]
             elif s.is_implies():
                 return [s.arg(0), mgr.Not(s.arg(1))]
             elif s.is_iff():
@@ -301,6 +307,9 @@ class NNFizer(DagWalker):
             return self.mgr.Or(args)
         elif s.is_or():
             return self.mgr.And(args)
+        elif s.is_ite():
+            i, ni, nt, ne = args
+            return self.mgr.Or(self.mgr.And(i, nt), self.mgr.And(ni, ne))
         elif s.is_implies():
             return self.mgr.And(args)
         elif s.is_iff():
