@@ -17,7 +17,8 @@
 #
 from warnings import warn
 
-from pysmt.constants import Fraction, is_pysmt_fraction, is_pysmt_integer
+from pysmt.constants import (Fraction, is_pysmt_fraction, is_pysmt_integer,
+                             to_python_integer)
 
 from pysmt.logics import LRA, LIA, QF_UFLIA, QF_UFLRA, QF_BV, PYSMT_QF_LOGICS
 from pysmt.oracles import get_logic
@@ -32,7 +33,7 @@ from pysmt.solvers.smtlib import SmtLibBasicSolver, SmtLibIgnoreMixin
 from pysmt.walkers import DagWalker
 from pysmt.exceptions import (SolverReturnedUnknownResultError,
                               InternalSolverError,
-                              NonLinearError, PysmtValueError, PysmtTypeError,
+                              PysmtValueError, PysmtTypeError,
                               ConvertExpressionError)
 from pysmt.decorators import clear_pending_pop, catch_conversion_error
 from pysmt.solvers.qelim import QuantifierEliminator
@@ -176,7 +177,7 @@ class MathSAT5Solver(IncrementalTrackingSolver, UnsatCoreSolver,
 
     LOGICS = PYSMT_QF_LOGICS -\
              set(l for l in PYSMT_QF_LOGICS \
-                 if not l.theory.linear or l.theory.strings)
+                 if l.theory.strings)
 
     OptionsClass = MathSATOptions
 
@@ -405,6 +406,7 @@ class MSatConverter(Converter, DagWalker):
             self._msat_lib.MSAT_TAG_LEQ: self._back_adapter(self.mgr.LE),
             self._msat_lib.MSAT_TAG_PLUS: self._back_adapter(self.mgr.Plus),
             self._msat_lib.MSAT_TAG_TIMES: self._back_adapter(self.mgr.Times),
+            self._msat_lib.MSAT_TAG_DIVIDE: self._back_adapter(self.mgr.Div),
             self._msat_lib.MSAT_TAG_BV_MUL: self._back_adapter(self.mgr.BVMul),
             self._msat_lib.MSAT_TAG_BV_ADD: self._back_adapter(self.mgr.BVAdd),
             self._msat_lib.MSAT_TAG_BV_UDIV: self._back_adapter(self.mgr.BVUDiv),
@@ -460,6 +462,7 @@ class MSatConverter(Converter, DagWalker):
             self._msat_lib.MSAT_TAG_LEQ: self._sig_most_generic_bool_binary,
             self._msat_lib.MSAT_TAG_PLUS:  self._sig_most_generic_bool_binary,
             self._msat_lib.MSAT_TAG_TIMES: self._sig_most_generic_bool_binary,
+            self._msat_lib.MSAT_TAG_DIVIDE: self._sig_most_generic_bool_binary,
             self._msat_lib.MSAT_TAG_BV_MUL: self._sig_binary,
             self._msat_lib.MSAT_TAG_BV_ADD: self._sig_binary,
             self._msat_lib.MSAT_TAG_BV_UDIV:self._sig_binary,
@@ -981,15 +984,26 @@ class MSatConverter(Converter, DagWalker):
 
     def walk_times(self, formula, args, **kwargs):
         res = args[0]
-        nl_count = 0 if self._msat_lib.msat_term_is_number(self.msat_env(), res) else 1
         for x in args[1:]:
-            if not self._msat_lib.msat_term_is_number(self.msat_env(), x):
-                nl_count += 1
-            if nl_count >= 2:
-                raise NonLinearError(formula)
-            else:
-                res = self._msat_lib.msat_make_times(self.msat_env(), res, x)
+            res = self._msat_lib.msat_make_times(self.msat_env(), res, x)
         return res
+
+    def walk_pow(self, formula, args, **kwargs):
+        n = to_python_integer(formula.args()[1].constant_value())
+        if n == 0:
+            return self._msat_lib.msat_make_number(self.msat_env(), "1")
+        is_neg = (n < 0)
+        n = abs(n)
+        res = args[0]
+        for i in range(2, n):
+            res = self._msat_lib.msat_make_times(self.msat_env(), res, args[0])
+        if is_neg:
+            one = self._msat_lib.msat_make_number(self.msat_env(), "1")
+            res = self._msat_lib.msat_make_divide(self.msat_env(), one, res)
+        return res
+
+    def walk_div(self, formula, args, **kwargs):
+        return self._msat_lib.msat_make_divide(self.msat_env(), args[0], args[1])
 
     def walk_function(self, formula, args, **kwargs):
         name = formula.function_name()
