@@ -137,7 +137,7 @@ class Factory(object):
         return SolverClass(environment=self.environment,
                            logic=closer_logic)
 
-    def get_optimizer(self, name=None, logic=None):
+    def get_optimizer(self, name=None, logic=None, **options):
         SolverClass, closer_logic = \
            self._get_solver_class(solver_list=self._all_optimizers,
                                   solver_type="Optimizer",
@@ -145,7 +145,7 @@ class Factory(object):
                                   name=name,
                                   logic=logic)
         return SolverClass(environment=self.environment,
-                           logic=closer_logic)
+                           logic=closer_logic, **options)
 
 
     def _get_solver_class(self, solver_list, solver_type, default_logic,
@@ -569,8 +569,8 @@ class Factory(object):
     def Interpolator(self, name=None, logic=None):
         return self.get_interpolator(name=name, logic=logic)
 
-    def Optimizer(self, name=None, logic=None):
-        return self.get_optimizer(name=name, logic=logic)
+    def Optimizer(self, name=None, logic=None, **options):
+        return self.get_optimizer(name=name, logic=logic, **options)
 
     def is_sat(self, formula, solver_name=None, logic=None, portfolio=None):
         if logic is None or logic == AUTO_LOGIC:

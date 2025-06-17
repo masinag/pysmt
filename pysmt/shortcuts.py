@@ -1003,7 +1003,7 @@ def Portfolio(solvers_set, logic, **options):
                         environment=get_env(),
                         **options)
 
-def Optimizer(name=None, logic=None):
+def Optimizer(name=None, logic=None, **options):
     """Returns an Optimizer
 
     :param name: Specify the name of the solver
@@ -1011,7 +1011,7 @@ def Optimizer(name=None, logic=None):
     :returns: An Optimizer
     :rtype: Optimizer
     """
-    return get_env().factory.Optimizer(name=name, logic=logic)
+    return get_env().factory.Optimizer(name=name, logic=logic, **options)
 
 
 def is_sat(formula, solver_name=None, logic=None, portfolio=None):
