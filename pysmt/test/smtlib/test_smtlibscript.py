@@ -23,11 +23,11 @@ from pysmt.shortcuts import And, Or, Symbol, GT, Real, Not
 from pysmt.typing import REAL
 from pysmt.test import TestCase, main
 from pysmt.smtlib.script import SmtLibScript, SmtLibCommand
-from pysmt.smtlib.script import smtlibscript_from_formula, evaluate_command
+from pysmt.smtlib.script import smtlibscript_from_formula, InterpreterOMT
 from pysmt.smtlib.parser import get_formula_strict, get_formula, SmtLibParser
 from pysmt.solvers.smtlib import SmtLibIgnoreMixin
 from pysmt.logics import QF_UFLIRA
-from pysmt.exceptions import UndefinedLogicError, PysmtValueError
+from pysmt.exceptions import UndefinedLogicError, PysmtValueError, PysmtTypeError
 
 
 
@@ -175,12 +175,36 @@ class TestSmtLibScript(TestCase):
         # No exceptions are thrown
         self.assertEqual(smtlib_script.replace('var', '__var0'), script.commands[0].serialize_to_string())
 
+    def test_twice_fix_real(self):
+        smtlib_script = "\n".join([
+            '(declare-fun r () Real)',
+            '(assert (< (* 1 r) 0))',
+            '(assert (< 2 (* 1 r)))'
+        ])
+        stream = StringIO(smtlib_script)
+        parser = SmtLibParser()
+        _ = parser.get_script(stream)
+        # No exceptions are thrown
+        self.assertTrue(True)
+
+    def test_type_error(self):
+        smtlib_script = "\n".join([
+            "(declare-sort B 0)",
+            "(declare-const e B)",
+            "(declare-const x Bool)",
+            "(assert (= e x))",
+        ])
+        stream = StringIO(smtlib_script)
+        parser = SmtLibParser()
+        with self.assertRaises(PysmtTypeError):
+            _ = parser.get_script(stream)
 
     def test_evaluate_command(self):
         class SmtLibIgnore(SmtLibIgnoreMixin):
             pass
 
         mock = SmtLibIgnore()
+        inter = InterpreterOMT()
         for cmd_name in [ smtcmd.SET_INFO,
                           smtcmd.ASSERT,
                           smtcmd.CHECK_SAT,
@@ -190,14 +214,14 @@ class TestSmtLibScript(TestCase):
                           smtcmd.PUSH,
                           smtcmd.POP]:
 
-            evaluate_command(SmtLibCommand(cmd_name, [None, None]),
+            inter.evaluate(SmtLibCommand(cmd_name, [None, None]),
                              solver=mock)
 
-        evaluate_command(SmtLibCommand(smtcmd.DECLARE_FUN,
+        inter.evaluate(SmtLibCommand(smtcmd.DECLARE_FUN,
                                        [None, None, None]),
                          solver=mock)
 
-        evaluate_command(SmtLibCommand(smtcmd.DEFINE_FUN,
+        inter.evaluate(SmtLibCommand(smtcmd.DEFINE_FUN,
                                        [None, None, None, None]),
                          solver=mock)
 
@@ -233,14 +257,19 @@ class TestSmtLibScript(TestCase):
         # Create a small file that tests all commands of smt-lib 2
         parser = SmtLibParser()
 
+        te = 0
         nie = 0
         for cmd in DEMO_SMTSCRIPT:
             try:
                 next(parser.get_command_generator(StringIO(cmd)))
             except NotImplementedError:
                 nie += 1
+            except PysmtTypeError:
+                te += 1
         # There are currently 3 not-implemented commands
         self.assertEqual(nie, 3)
+        # There is currently 1 type error
+        self.assertEqual(te, 1)
 
 DEMO_SMTSCRIPT = [ "(declare-fun a () Bool)",
                    "(declare-fun b () Bool)",

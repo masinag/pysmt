@@ -21,7 +21,7 @@ from collections import namedtuple
 
 from pysmt.cmd.installers import MSatInstaller, Z3Installer, PicoSATInstaller
 from pysmt.cmd.installers import CVC5Installer, YicesInstaller, BtorInstaller
-from pysmt.cmd.installers import CuddInstaller, CVC4Installer
+from pysmt.cmd.installers import CuddInstaller, CVC4Installer, OptiMSatInstaller
 from pysmt.cmd.installers.base import solver_install_site
 
 from pysmt.environment import get_env
@@ -36,15 +36,15 @@ INSTALLERS = [
     Installer(CVC5Installer,    "1.1.2", {}),
     Installer(CVC4Installer,    "1.7-prerelease",
               {"git_version" : "391ab9df6c3fd9a3771864900c1718534c1e4666"}),
-    Installer(Z3Installer,      "4.13.0", {}),
+    Installer(Z3Installer,      "4.15.0", {}),
     Installer(YicesInstaller,   "2.6.4", {"yices_api_version": "1.1.5"}),
     Installer(BtorInstaller,    "3.2.3", {}),
     Installer(PicoSATInstaller, "965",
               {"pypicosat_minor_version" : "1708010052"}),
     Installer(CuddInstaller,    "2.0.3",
               {"git_version" : "ecb03d6d231273343178f566cc4d7258dcce52b4"}),
+    Installer(OptiMSatInstaller, "1.7.3", {})
 ]
-
 
 
 def get_requested_solvers():
@@ -56,7 +56,8 @@ def get_requested_solvers():
         keys = requested_solvers_str.split(",")
         requested_solvers = [x.lower().strip() for x in keys]
         if "all" in requested_solvers:
-            requested_solvers = [x.InstallerClass.SOLVER for x in INSTALLERS if x != "cvc4"]
+            requested_solvers = [x.InstallerClass.SOLVER for x in INSTALLERS
+                                 if x.InstallerClass.SOLVER != "cvc4"]
     return requested_solvers
 
 
@@ -105,6 +106,9 @@ def check_installed(required_solvers, install_dir, bindings_dir, mirror_link):
 
     interps = get_env().factory.all_interpolators()
     print("Interpolators: %s" % ", ".join(name for name in interps))
+
+    opts = get_env().factory.all_optimizers()
+    print("Optimizers: %s" % ", ".join(name for name in opts))
 
 
 

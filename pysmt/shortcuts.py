@@ -244,6 +244,31 @@ def Ite(iff, left, right):
     return get_env().formula_manager.Ite(iff, left, right)
 
 
+def Abs(formula):
+    r"""Returns the absolute value of the formula.
+    
+    This is implemented as If(formula > 0, formula, -formula).
+    Works for both integer and real values.
+    
+    :param formula: The formula to compute the absolute value of
+    :returns: The absolute value of the formula
+    :raises: ValueError if the formula type is not integer or real
+    """
+    # Get the type of the formula to determine the appropriate zero value
+    formula_type = get_type(formula)
+    
+    # Create a zero value of the same type as the formula
+    if formula_type == types.INT:
+        zero = Int(0)
+    elif formula_type == types.REAL:
+        zero = Real(0)
+    else:
+        # Raise an error for unsupported types
+        raise ValueError(f"Abs function only supports integer and real types, got {formula_type}")
+    
+    return Ite(GT(formula, zero), formula, Minus(zero, formula))
+
+
 def Symbol(name, typename=types.BOOL):
     """Returns a symbol with the given name and type.
 
@@ -989,6 +1014,16 @@ def Portfolio(solvers_set, logic, **options):
                         environment=get_env(),
                         **options)
 
+def Optimizer(name=None, logic=None):
+    """Returns an Optimizer
+
+    :param name: Specify the name of the solver
+    :param logic: Specify the logic that is going to be used.
+    :returns: An Optimizer
+    :rtype: Optimizer
+    """
+    return get_env().factory.Optimizer(name=name, logic=logic)
+
 
 def is_sat(formula, solver_name=None, logic=None, portfolio=None):
     """ Returns whether a formula is satisfiable.
@@ -1138,7 +1173,6 @@ def qelim(formula, solver_name=None, logic=None):
     return env.factory.qelim(formula,
                              solver_name=solver_name,
                              logic=logic)
-
 
 def binary_interpolant(formula_a, formula_b, solver_name=None, logic=None):
     """Computes an interpolant of (formula_a, formula_b).

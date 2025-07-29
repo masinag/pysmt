@@ -35,9 +35,9 @@ def write_annotations(f):
                 yield item
         if annots is not None and formula in annots:
             for key, values in annots[formula].items():
-                self.write(f" :{key}")
+                self.write(" :%s" % str(key))
                 for value in values:
-                    self.write(f" {value}")
+                    self.write(" %s" % str(value))
             self.write(')')
     return resf
 
@@ -143,7 +143,7 @@ class SmtPrinter(TreeWalker):
         (n,d) = abs(formula.constant_value().numerator), \
                     formula.constant_value().denominator
         if d != 1:
-            res = template % ( "(/ " + str(n) + " " + str(d) + ")" )
+            res = template % ( "(/ " + str(n) + ".0 " + str(d) + ".0)" )
         else:
             res = template % (str(n) + ".0")
 
@@ -521,7 +521,7 @@ class SmtDagPrinter(DagWalker):
         (n,d) = abs(formula.constant_value().numerator), \
                     formula.constant_value().denominator
         if d != 1:
-            return template % ( "(/ " + str(n) + " " + str(d) + ")" )
+            return template % ( "(/ " + str(n) + ".0 " + str(d) + ".0)" )
         else:
             return template % (str(n) + ".0")
 
